@@ -233,7 +233,7 @@ def _variant() -> Variant:
             log.init.warning(f"Ignoring invalid QUTE_DARKMODE_VARIANT={env_var}")
 
     versions = version.qtwebengine_versions(avoid_init=True)
-    if versions is None:
+    if versions.webengine is None:
         # If we don't have a version (even with the fallback to
         # PYQT_WEBENGINE_VERSION_STR), we must be on Qt 5.12.
         return Variant.qt_511_to_513
