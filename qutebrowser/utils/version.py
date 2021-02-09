@@ -464,6 +464,8 @@ def _pdfjs_version() -> str:
 @dataclasses.dataclass
 class WebEngineVersions:
 
+    """Version numbers for QtWebEngine and the underlying Chromium."""
+
     webengine: Optional[utils.VersionNumber]
     chromium: Optional[str]
     source: str

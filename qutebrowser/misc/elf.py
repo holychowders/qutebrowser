@@ -61,12 +61,11 @@ PyQtWebEngine version, which is the next best thing.
 
 import struct
 import enum
-import sys
 import re
 import dataclasses
 import mmap
 import pathlib
-from typing import IO, ClassVar, Dict, Tuple, Optional
+from typing import IO, ClassVar, Dict, Optional, Union, cast
 
 from PyQt5.QtCore import QLibraryInfo
 
@@ -74,10 +73,13 @@ from qutebrowser.utils import log
 
 
 class ParseError(Exception):
-    pass
+
+    """Raised when the ELF file can't be parsed."""
 
 
 class Bitness(enum.Enum):
+
+    """Whether the ELF file is 32- or 64-bit."""
 
     x32 = 1
     x64 = 2
@@ -85,11 +87,14 @@ class Bitness(enum.Enum):
 
 class Endianness(enum.Enum):
 
+    """Whether the ELF file is little- or big-endian."""
+
     little = 1
     big = 2
 
 
 def _unpack(fmt, fobj):
+    """Unpack the given struct format from the given file."""
     size = struct.calcsize(fmt)
 
     try:
@@ -106,6 +111,12 @@ def _unpack(fmt, fobj):
 @dataclasses.dataclass
 class Ident:
 
+    """File identification for ELF.
+
+    See https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
+    (first 16 bytes).
+    """
+
     magic: bytes
     klass: Bitness
     data: Endianness
@@ -114,10 +125,10 @@ class Ident:
     abiversion: int
 
     _FORMAT: ClassVar[str] = '<4sBBBBB7x'
-    # _SIZE: ClassVar[int] = 0x10
 
     @classmethod
     def parse(cls, fobj: IO[bytes]) -> 'Ident':
+        """Parse an ELF ident header from a file."""
         magic, klass, data, version, osabi, abiversion = _unpack(cls._FORMAT, fobj)
 
         try:
@@ -135,6 +146,12 @@ class Ident:
 
 @dataclasses.dataclass
 class Header:
+
+    """ELF header without file identification.
+
+    See https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
+    (without the first 16 bytes).
+    """
 
     typ: int
     machine: int
@@ -155,19 +172,20 @@ class Header:
         Bitness.x32: '<HHIIIIIHHHHHH',
     }
 
-    # _SIZES: ClassVar[Dict[Bitness, int]] = {
-    #     Bitness.x64: 0x30,
-    #     Bitness.x32: 0x18,
-    # }
-
     @classmethod
     def parse(cls, fobj: IO[bytes], bitness: Bitness) -> 'Header':
+        """Parse an ELF header from a file."""
         fmt = cls._FORMATS[bitness]
         return cls(*_unpack(fmt, fobj))
 
 
 @dataclasses.dataclass
 class SectionHeader:
+
+    """ELF section header.
+
+    See https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#Section_header
+    """
 
     name: int
     typ: int
@@ -185,18 +203,15 @@ class SectionHeader:
         Bitness.x32: '<IIIIIIIIII',
     }
 
-    # _SIZES: ClassVar[Dict[Bitness, int]] = {
-    #     Bitness.x64: 0x40,
-    #     Bitness.x32: 0x28,
-    # }
-
     @classmethod
     def parse(cls, fobj: IO[bytes], bitness: Bitness) -> 'SectionHeader':
+        """Parse an ELF section header from a file."""
         fmt = cls._FORMATS[bitness]
         return cls(*_unpack(fmt, fobj))
 
 
 def get_rodata_header(f: IO[bytes]) -> SectionHeader:
+    """Parse an ELF file and find the .rodata section header."""
     ident = Ident.parse(f)
     if ident.magic != b'\x7fELF':
         raise ParseError(f"Invalid magic {ident.magic!r}")
@@ -230,48 +245,74 @@ def get_rodata_header(f: IO[bytes]) -> SectionHeader:
 @dataclasses.dataclass
 class Versions:
 
+    """The versions found in the ELF file."""
+
     webengine: str
     chromium: str
 
 
-def _parse_from_path(path: pathlib.Path) -> Versions:
-    with path.open('rb') as f:
-        sh = get_rodata_header(f)
+def _find_versions(data: bytes) -> Versions:
+    """Find the version numbers in the given data.
 
+    Note that 'data' can actually be a mmap.mmap, but typing doesn't handle that
+    correctly: https://github.com/python/typeshed/issues/1467
+    """
+    match = re.search(
+        br'QtWebEngine/([0-9.]+) Chrome/([0-9.]+)',
+        data,
+    )
+    if match is None:
+        raise ParseError("No match in .rodata")
+
+    try:
+        return Versions(
+            webengine=match.group(1).decode('ascii'),
+            chromium=match.group(2).decode('ascii'),
+        )
+    except UnicodeDecodeError as e:
+        raise ParseError(e)
+
+
+def _parse_from_file(f: IO[bytes]) -> Versions:
+    """Parse the ELF file from the given path."""
+    sh = get_rodata_header(f)
+
+    rest = sh.offset % mmap.ALLOCATIONGRANULARITY
+    mmap_offset = sh.offset - rest
+    mmap_size = sh.size + rest
+
+    try:
+        with mmap.mmap(
+            f.fileno(),
+            mmap_size,
+            offset=mmap_offset,
+            access=mmap.ACCESS_READ,
+        ) as mmap_data:
+            return _find_versions(cast(bytes, mmap_data))
+    except OSError as e:
+        # For some reason, mmap seems to fail with PyQt's bundled Qt?
+        log.misc.debug(f"mmap failed ({e}), falling back to reading", exc_info=True)
         try:
-            rodata = mmap.mmap(
-                f.fileno(),
-                sh.size,
-                offset=sh.offset,
-                access=mmap.ACCESS_READ,
-            )
+            f.seek(sh.offset)
+            data = f.read(sh.size)
         except OSError as e:
             raise ParseError(e)
 
-        match = re.search(
-            br'QtWebEngine/([0-9.]+) Chrome/([0-9.]+)',
-            rodata,
-        )  # type: ignore[call-overload]
-        if match is None:
-            raise ParseError("No match in .rodata")
-
-        try:
-            return Versions(
-                webengine=match.group(1).decode('ascii'),
-                chromium=match.group(2).decode('ascii'),
-            )
-        except UnicodeDecodeError as e:
-            raise ParseError(e)
+        return _find_versions(data)
 
 
 def parse_webenginecore() -> Optional[Versions]:
+    """Parse the QtWebEngineCore library file."""
     library_path = pathlib.Path(QLibraryInfo.location(QLibraryInfo.LibrariesPath))
-    lib_file = library_path / 'libQt5WebEngineCore.so'
+
+    # PyQt bundles those files with a .5 suffix
+    lib_file = library_path / 'libQt5WebEngineCore.so.5'
     if not lib_file.exists():
         return None
 
     try:
-        return _parse_from_path(lib_file)
+        with lib_file.open('rb') as f:
+            return _parse_from_file(f)
     except ParseError as e:
-        log.init.debug(f"Failed to parse ELF: {e}")
+        log.misc.debug(f"Failed to parse ELF: {e}", exc_info=True)
         return None
