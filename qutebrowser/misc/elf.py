@@ -45,6 +45,10 @@ commandline arguments to pass) it's too late in the initialization process.
 d) Spawn QtWebEngine in a subprocess and ask for its user-agent. This takes too long to
 do it on every startup.
 
+e) Ask the package manager for this information. This means we'd need to know (or guess)
+the package manager and package name. Also see:
+https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=752114
+
 Because of all those issues, we instead look for the (fixed!) version string as part of
 the user agent header. Because libQt5WebEngineCore is rather big (~120 MB), we don't
 want to search through the entire file, so we instead have a simplistic ELF parser here
