@@ -494,7 +494,7 @@ class WebEngineVersions:
     @classmethod
     def from_pyqt(cls, pyqt_webengine_version) -> 'WebEngineVersions':
         return cls(
-            webengine=utils.parse_versions(pyqt_webengine_version),
+            webengine=utils.parse_version(pyqt_webengine_version),
             chromium=None,
             source='PyQt',
         )
