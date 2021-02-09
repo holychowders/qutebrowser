@@ -239,6 +239,7 @@ def _variant() -> Variant:
         return Variant.qt_511_to_513
 
     if (versions.webengine == utils.VersionNumber(5, 15, 2) and
+            versions.chromium is not None and
             versions.chromium.startswith('87.')):
         # WORKAROUND for Gentoo packaging something newer as 5.15.2...
         return Variant.qt_515_3
