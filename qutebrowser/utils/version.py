@@ -470,10 +470,13 @@ class WebEngineVersions:
     def __str__(self):
         if self.webengine is None:
             return f'unknown ({self.source})'
-        return (
-            f'QtWebEngine {self.webengine.toString()}, '
-            f'Chromium {self.chromium} (from {self.source})'
-        )
+
+        s = f'QtWebEngine {self.webengine.toString()}'
+        if self.chromium is not None:
+            s += f', Chromium {self.chromium}'
+        if self.source != 'UA':
+            s += f' (from {self.source})'
+        return s
 
     @classmethod
     def from_ua(cls, ua: websettings.UserAgent) -> 'WebEngineVersions':
