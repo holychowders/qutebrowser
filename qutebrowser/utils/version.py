@@ -509,7 +509,7 @@ class WebEngineVersions:
         '5.15.3': '87.0.4280.144',
     }
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.webengine is None:
             return f'unknown ({self.source})'
 
@@ -537,7 +537,7 @@ class WebEngineVersions:
         )
 
     @classmethod
-    def _infer_chromium_version(cls, pyqt_webengine_version: str) -> str:
+    def _infer_chromium_version(cls, pyqt_webengine_version: str) -> Optional[str]:
         chromium_version = cls._CHROMIUM_VERSIONS.get(pyqt_webengine_version)
         if chromium_version is not None:
             return chromium_version
@@ -582,7 +582,7 @@ def qtwebengine_versions(avoid_init: bool = False) -> WebEngineVersions:
     - https://chromereleases.googleblog.com/
     """
     if webenginesettings is None:
-        return WebEngineVersions.unknown('not installed')
+        return WebEngineVersions.unknown('not installed')  # type: ignore[unreachable]
 
     if webenginesettings.parsed_user_agent is None and not avoid_init:
         webenginesettings.init_user_agent()
@@ -597,7 +597,7 @@ def qtwebengine_versions(avoid_init: bool = False) -> WebEngineVersions:
     if PYQT_WEBENGINE_VERSION_STR is not None:
         return WebEngineVersions.from_pyqt(PYQT_WEBENGINE_VERSION_STR)
 
-    return WebEngineVersions.unknown('old PyQt')
+    return WebEngineVersions.unknown('old PyQt')  # type: ignore[unreachable]
 
 
 def _backend() -> str:
