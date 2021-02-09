@@ -32,7 +32,8 @@ import datetime
 import getpass
 import functools
 import dataclasses
-from typing import Mapping, Optional, Sequence, Tuple, cast
+from typing import Mapping, Optional, Sequence, Tuple, ClassVar, Dict, cast
+
 
 from PyQt5.QtCore import PYQT_VERSION_STR, QLibraryInfo
 from PyQt5.QtNetwork import QSslSocket
@@ -467,6 +468,47 @@ class WebEngineVersions:
     chromium: Optional[str]
     source: str
 
+    _CHROMIUM_VERSIONS: ClassVar[Dict[str, str]] = {
+        # Qt 5.12: Chromium 69
+        # (LTS)    69.0.3497.128 (~2018-09-11)
+        #          5.12.0: Security fixes up to 70.0.3538.102 (~2018-10-24)
+        #          5.12.1: Security fixes up to 71.0.3578.94  (2018-12-12)
+        #          5.12.2: Security fixes up to 72.0.3626.121 (2019-03-01)
+        #          5.12.3: Security fixes up to 73.0.3683.75  (2019-03-12)
+        #          5.12.4: Security fixes up to 74.0.3729.157 (2019-05-14)
+        #          5.12.5: Security fixes up to 76.0.3809.87  (2019-07-30)
+        #          5.12.6: Security fixes up to 77.0.3865.120 (~2019-09-10)
+        #          5.12.7: Security fixes up to 79.0.3945.130 (2020-01-16)
+        #          5.12.8: Security fixes up to 80.0.3987.149 (2020-03-18)
+        #          5.12.9: Security fixes up to 83.0.4103.97  (2020-06-03)
+        #          5.12.10: Security fixes up to 86.0.4240.75 (2020-10-06)
+        '5.12': '69.0.3497.128',
+
+        # Qt 5.13: Chromium 73
+        #          73.0.3683.105 (~2019-02-28)
+        #          5.13.0: Security fixes up to 74.0.3729.157 (2019-05-14)
+        #          5.13.1: Security fixes up to 76.0.3809.87  (2019-07-30)
+        #          5.13.2: Security fixes up to 77.0.3865.120 (2019-10-10)
+        '5.13': '73.0.3683.105',
+
+        # Qt 5.14: Chromium 77
+        #          77.0.3865.129 (~2019-10-10)
+        #          5.14.0: Security fixes up to 77.0.3865.129 (~2019-09-10)
+        #          5.14.1: Security fixes up to 79.0.3945.117 (2020-01-07)
+        #          5.14.2: Security fixes up to 80.0.3987.132 (2020-03-03)
+        '5.14': '77.0.3865.129',
+
+        # Qt 5.15: Chromium 80
+        #          80.0.3987.163 (2020-04-02)
+        #          5.15.0: Security fixes up to 81.0.4044.138 (2020-05-05)
+        #          5.15.1: Security fixes up to 85.0.4183.83  (2020-08-25)
+        #          5.15.2: Updated to 83.0.4103.122           (~2020-06-24)
+        #                  Security fixes up to 86.0.4240.183 (2020-11-02)
+        '5.15': '80.0.3987.163',
+        '5.15.2': '83.0.4103.122',
+        '5.15.3': '87.0.4280.144',
+    }
+
     def __str__(self):
         if self.webengine is None:
             return f'unknown ({self.source})'
@@ -495,10 +537,19 @@ class WebEngineVersions:
         )
 
     @classmethod
-    def from_pyqt(cls, pyqt_webengine_version) -> 'WebEngineVersions':
+    def _infer_chromium_version(cls, pyqt_webengine_version: str) -> str:
+        chromium_version = cls._CHROMIUM_VERSIONS.get(pyqt_webengine_version)
+        if chromium_version is not None:
+            return chromium_version
+        # 5.15.2 -> 5.15
+        minor_version = pyqt_webengine_version.rsplit('.', maxsplit=1)[0]
+        return cls._CHROMIUM_VERSIONS.get(minor_version)
+
+    @classmethod
+    def from_pyqt(cls, pyqt_webengine_version: str) -> 'WebEngineVersions':
         return cls(
             webengine=utils.parse_version(pyqt_webengine_version),
-            chromium=None,
+            chromium=cls._infer_chromium_version(pyqt_webengine_version),
             source='PyQt',
         )
 
@@ -522,41 +573,7 @@ def qtwebengine_versions(avoid_init: bool = False) -> WebEngineVersions:
     This can also be checked by looking at this file with the right Qt tag:
     https://code.qt.io/cgit/qt/qtwebengine.git/tree/tools/scripts/version_resolver.py#n41
 
-    Quick reference:
-
-    Qt 5.12: Chromium 69
-    (LTS)    69.0.3497.128 (~2018-09-11)
-             5.12.0: Security fixes up to 70.0.3538.102 (~2018-10-24)
-             5.12.1: Security fixes up to 71.0.3578.94  (2018-12-12)
-             5.12.2: Security fixes up to 72.0.3626.121 (2019-03-01)
-             5.12.3: Security fixes up to 73.0.3683.75  (2019-03-12)
-             5.12.4: Security fixes up to 74.0.3729.157 (2019-05-14)
-             5.12.5: Security fixes up to 76.0.3809.87  (2019-07-30)
-             5.12.6: Security fixes up to 77.0.3865.120 (~2019-09-10)
-             5.12.7: Security fixes up to 79.0.3945.130 (2020-01-16)
-             5.12.8: Security fixes up to 80.0.3987.149 (2020-03-18)
-             5.12.9: Security fixes up to 83.0.4103.97  (2020-06-03)
-             5.12.10: Security fixes up to 86.0.4240.75 (2020-10-06)
-
-    Qt 5.13: Chromium 73
-             73.0.3683.105 (~2019-02-28)
-             5.13.0: Security fixes up to 74.0.3729.157 (2019-05-14)
-             5.13.1: Security fixes up to 76.0.3809.87  (2019-07-30)
-             5.13.2: Security fixes up to 77.0.3865.120 (2019-10-10)
-
-    Qt 5.14: Chromium 77
-             77.0.3865.129 (~2019-10-10)
-             5.14.0: Security fixes up to 77.0.3865.129 (~2019-09-10)
-             5.14.1: Security fixes up to 79.0.3945.117 (2020-01-07)
-             5.14.2: Security fixes up to 80.0.3987.132 (2020-03-03)
-
-    Qt 5.15: Chromium 80
-             80.0.3987.163 (2020-04-02)
-             5.15.0: Security fixes up to 81.0.4044.138 (2020-05-05)
-             5.15.1: Security fixes up to 85.0.4183.83  (2020-08-25)
-
-             5.15.2: Updated to 83.0.4103.122           (~2020-06-24)
-                     Security fixes up to 86.0.4240.183 (2020-11-02)
+    See WebEngineVersions above for a quick reference.
 
     Also see:
 
